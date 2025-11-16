@@ -1,19 +1,3 @@
-#########################################################################
-
-# Program that solves the Jeans-Poisson equation for the density profile 
-# of SIDM halo in the presence of Hernquist baryon mass distribution.
-
-# In this version, we start with a NFW CDM halo of given halo age, as 
-# well as the Henquist baryon distribution, and we find the central DM 
-# density (rho_dm0) and the velocity dispersion (sigma_0) by minimizing
-# the figure of merit, delta, which measures the fractional difference
-# in density and enclosed mass between the SIDM profile and the CDM 
-# profile at r_1 ( the characteristic radius within which an average DM 
-# particle has experienced one or more self-interaction )
-
-# Arthur Fangzhou Jiang 2020 Caltech
-
-######################## set up the environment #########################
 
 #---user modules
 import profiles as pr
@@ -133,121 +117,99 @@ class classhalo:
        
         
 file_paths = ['/home/ananas/Forks/TangoSIDM_DMFraction/AnalyticalModelBis/Halo_data_L025N376WeakStellarFBSigmaVelDep60Anisotropic_withgas.hdf5',
-              'Halo_data_L025N376WeakStellarFBSigmaVelDep30Anisotropic.hdf5',]
+              '/home/ananas/Forks/TangoSIDM_DMFraction/data/Simulation_datasets/TangoSIDM/Halo_data_L025N376ReferenceSigmaVelDep30Anisotropic.hdf5',
+              '/home/ananas/Forks/TangoSIDM_DMFraction/data/Simulation_datasets/TangoSIDM/Halo_data_L025N376ReferenceSigmaConstant00.hdf5', 
+              'SigmaConstant10.hdf5']
 
 file_names = ['WSFB60', 'WSFB30', 'WSFBconst', 'Ref60', 'Ref30', 'Refconst']
-
-halo = classhalo(file_paths[0])
-k = 0
-print(np.interp(halo.GalaxyProjectedHalfLightRadius[k], halo.AxisRadius, halo.fDM[:, k]))
-print(halo.GalaxyProjectedHalfLightRadius[k])
-print(halo.M200c[k])
-print(halo.Mstar[k])
-print(halo.c200c[k])
+halo = classhalo(file_paths[1])
 
 
+def calculate_mass(density_profile, radius_bins, Reff):
+    """
+    Calcule la masse intégrée jusqu'à un rayon Reff.
+    density_profile : Profil de densité (array).
+    radius_bins : Rayons correspondants (array).
+    Reff : Rayon effectif jusqu'où intégrer (float).
+    """
+    # Filtrer les rayons jusqu'à Reff
+    valid_indices = radius_bins <= Reff
+    r = radius_bins[valid_indices]
+    rho = density_profile[valid_indices]
 
-########################### user control ################################
-
-#---target CDM halo and baryon distribution
-
-lgMv = halo.M200c[k] # [M_sun]
-c = halo.c200c[k]
-lgMb = halo.Mstar[k] # [M_sun]
-r0 = halo.GalaxyProjectedHalfLightRadius[k] / (1 + np.sqrt(2)) # [kpc]
+    # Intégration discrète (similaire à trapz)
+    mass = np.trapz(4 * np.pi * r**2 * rho, r)
+    return mass
+sig = []
+true_sig = []
+for k in range(20):
     
-r_FullRange = np.logspace(-3,3,200) # [kpc] for plotting the full profile
+    #---target CDM halo and baryon distribution
+    Reff = halo.GalaxyProjectedHalfLightRadius[k]
+    lgMv = halo.M200c[k] # [M_sun]
+    c = halo.c200c[k]
+    lgMb = halo.Mstar[k] # [M_sun]
+    r0 = Reff / (1 + np.sqrt(2)) # [kpc]
 
-############################### compute #################################
+    r_FullRange = np.logspace(-3,3,500) # [kpc] for plotting the full profile
 
-print('>>> computing SIDM profile ... ')
+    ############################### compute #################################
 
-#---prepare the CDM profile to stitch to
-# with baryons
-Mv = 10.**lgMv
-Mb = 10.**lgMb
-halo_init = pr.NFW(Mv,c,Delta=100.,z=0.)
-disk = pr.Hernquist(Mb,r0)
-halo_contra = gh.contra(r_FullRange,halo_init,disk)[0] # <<< adiabatically contracted CDM halo
+    print('>>> computing SIDM profile ... ')
 
+    #---prepare the CDM profile to stitch to
+    # with baryons
+    Mv = 10.**lgMv
+    Mb = 10.**lgMb
+    halo_init = pr.NFW(Mv,c,Delta=100.,z=0.)
+    disk = pr.Hernquist(Mb,r0)
+    halo_contra = gh.contra(r_FullRange,halo_init,disk)[0] # <<< adiabatically contracted CDM halo
+    tage = 9
 
-
-
-def calculate_derivative(density, r):
-    """Calculate the numerical derivative of the density profile."""
-    return np.gradient(density, r)
-
-def calculate_distance(deriv1, deriv2):
-    """Calculate the distance between two derivative profiles."""
-    return np.mean((np.abs(deriv1 - deriv2)) / np.abs(deriv1) * 100)
-
-def dens(r, density, radius):
-    return np.interp(r, radius, density)
-
-mass = lambda r, density, radius: 4*np.pi*dens(r, density, radius)*r**2
-
-def find_best_match(density1, density2, r):
+    sigmamx = np.interp(halo.GalaxyProjectedHalfLightRadius[k], halo.Density_radial_bins, halo.Dark_matter_Sigma_profile[:, k])
+    radius = np.interp(halo.GalaxyProjectedHalfLightRadius[k], halo.Density_radial_bins, np.arange(len(halo.Density_radial_bins)))
+    print(sigmamx)
+    print('len de sig, ',radius)
+    sigmamx_halo = sigmamx
     
-    n = len(density1)
-    best_r = []
-    thresold = 3
-    best_distance = []
+    # dark-matter only
+    fb = Mb/Mv
+    disk_dmo = pr.Hernquist(0.001,100.) # <<< use a tiny mass and huge size for the DM-only case
+    halo_dmo = pr.NFW((1.-fb)*Mv,c,Delta=halo_init.Deltah,z=halo_init.z) # <<< DMO CDM halo
 
-    for i in range(0, n - thresold):
-        deriv1 = calculate_derivative(density1[i:i+thresold], r[i:i+thresold])
-        deriv2 = calculate_derivative(density2[i:i+thresold], r[i:i+thresold])
-        dist = calculate_distance(deriv1, deriv2)
-        M1 = fixed_quad(mass, 0, r[i], args=(density1, r))[0]
-        M2 = fixed_quad(mass, 0, r[i], args=(density2, r))[0]
-        print("masses are ", M1/1e8, " and ",M2/1e8)
-        distM = calculate_distance(M1, M2)
-        print("distM is ", distM)
-        if dist < 25 and distM < 25:
-            print("Condition completed")
-            return r[i], dist
-        else:
-            best_distance.append(dist)
-            best_r.append(i)
+    #---find r_1
 
-    mini = np.argmin(best_distance)
+    #---with baryon
 
-    return r[best_r[mini]], best_distance[mini]
+    sigmamx_values = np.linspace(-2, 10, 30)
+    sigmamx_theo = []
+    fraction_dm_map = []
+    for j, sigmamx in enumerate(sigmamx_values):
+        try:
+            r1 = pr.r1(halo_contra,sigmamx=sigmamx,tage=tage)
+            r1_dmo = pr.r1(halo_dmo,sigmamx=sigmamx,tage=tage)
+        except ValueError:
+            continue
+        rhodm0,sigma0,rho,Vc,r = pr.stitchSIDMcore(r1,halo_contra,disk)
 
+    #---dark-matter only
+        rhodm0_dmo,sigma0_dmo,rho_dmo,Vc_dmo,r_dmo = pr.stitchSIDMcore(r1_dmo,halo_dmo,disk_dmo)
+        sigmamx_theo.append(np.interp(r1, halo.Density_radial_bins, halo.Dark_matter_Sigma_profile[:, k]))
+        # Calcul de la fraction de matière noire
+        M_dm_Reff = calculate_mass(rho, r, Reff)
+        M_total_Reff = calculate_mass(halo.Density_profile[:, k], halo.Density_radial_bins, Reff)
+        fraction_dm_map.append(M_dm_Reff / M_total_Reff)
+    f = np.interp(halo.GalaxyProjectedHalfLightRadius[k], halo.AxisRadius, halo.fDM[:, k])
+    print('f is ', f)
+    print(fraction_dm_map)
+    index_closest = np.argmin(np.abs(fraction_dm_map - f))  # Indice de la valeur la plus proche
+    print(fraction_dm_map - f)
+    sigmamx_closest = sigmamx_values[index_closest] 
+    sig.append(sigmamx_closest)
+    true_sig.append(sigmamx_theo[index_closest])
 
-r1, dist = find_best_match(halo_contra.rho(r_FullRange), halo_init.rho(r_FullRange), r_FullRange)
-
-
-print(f"r1 is :  {r1:.2f} kpc")
-print(f"Dist is :  {dist}")
-
-
-rhor1 = np.interp(r1, r_FullRange, halo_contra.rho(r_FullRange))
-print(rhor1)
-
-# Visualisation
-plt.plot(r_FullRange, halo_contra.rho(r_FullRange), label='rho iso')
-plt.plot(r_FullRange, halo_init.rho(r_FullRange), label='CDM')
-plt.axvline(x=r1, color='r', linestyle='--', label=f'Optimal r = {r1}')
-plt.xlabel('Rayon')
-plt.ylabel('Densité')
-plt.legend()
-plt.yscale('log')
-plt.xscale('log')
+print(sig)
+print(true_sig)
+plt.figure()
+plt.scatter(sig, true_sig)
 plt.show()
-
-#######################################
-kpctocm = 3.086e16*1e5
-kmtocm = 1e5
-vel_disp = 200 #km/s
-vel_disp *= kmtocm #cm/s
-tage = 10*1e9 #m
-tage *= 60*60*24*361
-rho = rhor1 #Msol/kpc3
-rho *= 2e30*1e3
-rho /= kpctocm**3
-
-def sigm(rho, vel, tage):
-    return np.pi/(rho*vel*4*tage)
-
-print("sigm", sigm(rho, vel_disp, tage))
-print(np.interp(halo.GalaxyProjectedHalfLightRadius[k], halo.Density_radial_bins, halo.Dark_matter_Sigma_profile[:, k]))

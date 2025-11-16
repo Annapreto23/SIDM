@@ -169,85 +169,22 @@ Mb = 10.**lgMb
 halo_init = pr.NFW(Mv,c,Delta=100.,z=0.)
 disk = pr.Hernquist(Mb,r0)
 halo_contra = gh.contra(r_FullRange,halo_init,disk)[0] # <<< adiabatically contracted CDM halo
+tage = 9
 
+sigmamx = np.interp(halo.GalaxyProjectedHalfLightRadius[k], halo.AxisRadius, halo.Dark_matter_Sigma_profile[:, k])
+print(sigmamx)
 
+# dark-matter only
+fb = Mb/Mv
+disk_dmo = pr.Hernquist(0.001,100.) # <<< use a tiny mass and huge size for the DM-only case
+halo_dmo = pr.NFW((1.-fb)*Mv,c,Delta=halo_init.Deltah,z=halo_init.z) # <<< DMO CDM halo
 
+#---find r_1
+r1 = pr.r1(halo_contra,sigmamx=sigmamx,tage=tage)
+r1_dmo = pr.r1(halo_dmo,sigmamx=sigmamx,tage=tage)
 
-def calculate_derivative(density, r):
-    """Calculate the numerical derivative of the density profile."""
-    return np.gradient(density, r)
+#---with baryon
+rhodm0,sigma0,rho,Vc,r = pr.stitchSIDMcore(r1,halo_contra,disk)
 
-def calculate_distance(deriv1, deriv2):
-    """Calculate the distance between two derivative profiles."""
-    return np.mean((np.abs(deriv1 - deriv2)) / np.abs(deriv1) * 100)
-
-def dens(r, density, radius):
-    return np.interp(r, radius, density)
-
-mass = lambda r, density, radius: 4*np.pi*dens(r, density, radius)*r**2
-
-def find_best_match(density1, density2, r):
-    
-    n = len(density1)
-    best_r = []
-    thresold = 3
-    best_distance = []
-
-    for i in range(0, n - thresold):
-        deriv1 = calculate_derivative(density1[i:i+thresold], r[i:i+thresold])
-        deriv2 = calculate_derivative(density2[i:i+thresold], r[i:i+thresold])
-        dist = calculate_distance(deriv1, deriv2)
-        M1 = fixed_quad(mass, 0, r[i], args=(density1, r))[0]
-        M2 = fixed_quad(mass, 0, r[i], args=(density2, r))[0]
-        print("masses are ", M1/1e8, " and ",M2/1e8)
-        distM = calculate_distance(M1, M2)
-        print("distM is ", distM)
-        if dist < 25 and distM < 25:
-            print("Condition completed")
-            return r[i], dist
-        else:
-            best_distance.append(dist)
-            best_r.append(i)
-
-    mini = np.argmin(best_distance)
-
-    return r[best_r[mini]], best_distance[mini]
-
-
-r1, dist = find_best_match(halo_contra.rho(r_FullRange), halo_init.rho(r_FullRange), r_FullRange)
-
-
-print(f"r1 is :  {r1:.2f} kpc")
-print(f"Dist is :  {dist}")
-
-
-rhor1 = np.interp(r1, r_FullRange, halo_contra.rho(r_FullRange))
-print(rhor1)
-
-# Visualisation
-plt.plot(r_FullRange, halo_contra.rho(r_FullRange), label='rho iso')
-plt.plot(r_FullRange, halo_init.rho(r_FullRange), label='CDM')
-plt.axvline(x=r1, color='r', linestyle='--', label=f'Optimal r = {r1}')
-plt.xlabel('Rayon')
-plt.ylabel('Densité')
-plt.legend()
-plt.yscale('log')
-plt.xscale('log')
-plt.show()
-
-#######################################
-kpctocm = 3.086e16*1e5
-kmtocm = 1e5
-vel_disp = 200 #km/s
-vel_disp *= kmtocm #cm/s
-tage = 10*1e9 #m
-tage *= 60*60*24*361
-rho = rhor1 #Msol/kpc3
-rho *= 2e30*1e3
-rho /= kpctocm**3
-
-def sigm(rho, vel, tage):
-    return np.pi/(rho*vel*4*tage)
-
-print("sigm", sigm(rho, vel_disp, tage))
-print(np.interp(halo.GalaxyProjectedHalfLightRadius[k], halo.Density_radial_bins, halo.Dark_matter_Sigma_profile[:, k]))
+#---dark-matter only
+rhodm0_dmo,sigma0_dmo,rho_dmo,Vc_dmo,r_dmo = pr.stitchSIDMcore(r1_dmo,halo_dmo,disk_dmo)
