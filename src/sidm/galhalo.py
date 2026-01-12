@@ -7,10 +7,10 @@
 
 import numpy as np
 
-import config as cfg
-import aux
-import profiles as pr
-import cosmo as co
+import sidm.config as cfg
+import sidm.sidm_aux as aux
+import sidm.profiles as pr
+import sidm.cosmo as co
 
 from lmfit import minimize, Parameters
 

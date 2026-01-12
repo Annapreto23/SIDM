@@ -12,7 +12,7 @@
 
 #########################################################################
 
-import cosmo as co
+
 
 import numpy as np
 from scipy.interpolate import interp1d
@@ -115,9 +115,24 @@ cosmo = {
                                  # 0=integration, 1=interpolation 
     }
 
-print('>>> Normalizing primordial power spectrum P(k)=(k/k_0)^n_s ...')
-cosmo['k0'] = co.k0(**cosmo)
-print('    such that sigma(R=8Mpc/h) = %8.4f.'%(co.sigmaR(8.,**cosmo)))
+# Initialize Colossus Cosmology
+from colossus.cosmology import cosmology
+params = {
+    'flat': True,
+    'H0': h * 100.0,
+    'Om0': Om,
+    'Ob0': Ob,
+    'sigma8': s8,
+    'ns': ns
+}
+cosmology.addCosmology('sidm_cosmo', params)
+cosmology.setCosmology('sidm_cosmo')
+
+
+import sidm.cosmo as co
+# print('>>> Normalizing primordial power spectrum P(k)=(k/k_0)^n_s ...')
+# cosmo['k0'] = co.k0(**cosmo)
+# print('    such that sigma(R=8Mpc/h) = %8.4f.'%(co.sigmaR(8.,**cosmo)))
 
 print('>>> Tabulating sigma(M,z=0) ...')
 lgM_grid  = np.linspace(1.,17.,1000)

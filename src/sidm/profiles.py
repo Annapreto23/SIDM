@@ -23,8 +23,8 @@
 
 #########################################################################
 
-import config as cfg # for global variables
-import cosmo as co # for cosmology related functions
+import sidm.config as cfg
+import sidm.cosmo as co
 
 import numpy as np
 from scipy.optimize import brentq,minimize
